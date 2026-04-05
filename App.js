@@ -1,11 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, createContext, useContext } from 'react';
 import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, Image, Switch, TextInput, Modal, Button, ScrollView } from 'react-native';
+
+const AuthContext = createContext();
+
+const users = [
+  { username: 'nadia', password: '1234' },
+  { username: 'olena', password: 'abcd' },
+];
 
 const initialData = [
   { id: '1', title: 'Київська Русь', description: 'Основа середньовічної держави на теренах України.', image: 'https://via.placeholder.com/100' },
   { id: '2', title: 'Богдан Хмельницький', description: 'Очільник визвольної боротьби українського народу.', image: 'https://via.placeholder.com/100' },
   { id: '3', title: 'Козацька Січ', description: 'Центр військової та політичної організації козаків.', image: 'https://via.placeholder.com/100' },
 ];
+
+const LoginScreen = ({ onLogin, theme }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    const user = users.find(u => u.username === username && u.password === password);
+    if (user) {
+      onLogin(user);
+    } else {
+      setError('Невірний логін або пароль');
+    }
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={styles.loginContainer}>
+        <Text style={[styles.loginTitle, { color: theme.text }]}>Вхід</Text>
+        <TextInput
+          placeholder="Логін"
+          placeholderTextColor={theme.subText}
+          value={username}
+          onChangeText={setUsername}
+          style={[styles.input, { backgroundColor: theme.card, color: theme.text }]}
+        />
+        <TextInput
+          placeholder="Пароль"
+          placeholderTextColor={theme.subText}
+          value={password}
+          onChangeText={setPassword}
+          style={[styles.input, { backgroundColor: theme.card, color: theme.text }]}
+          secureTextEntry
+        />
+        {error ? <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text> : null}
+        <Button title="Увійти" onPress={handleLogin} />
+      </View>
+    </SafeAreaView>
+  );
+};
 
 const HistoryListScreen = ({ data, openModal, deleteItem, theme }) => (
   <FlatList
@@ -26,16 +73,6 @@ const HistoryListScreen = ({ data, openModal, deleteItem, theme }) => (
       </TouchableOpacity>
     )}
   />
-);
-
-const SettingsScreen = ({ isDarkMode, setIsDarkMode, theme }) => (
-  <View style={styles.settingsContainer}>
-    <Text style={[styles.settingsTitle, { color: theme.text }]}>Налаштування</Text>
-    <View style={styles.settingItem}>
-      <Text style={{ color: theme.text }}>Темна тема</Text>
-      <Switch value={isDarkMode} onValueChange={setIsDarkMode} />
-    </View>
-  </View>
 );
 
 const AddEventScreen = ({ addItem, theme }) => {
@@ -72,7 +109,22 @@ const AddEventScreen = ({ addItem, theme }) => {
   );
 };
 
+const SettingsScreen = ({ isDarkMode, setIsDarkMode, theme, logout, user }) => (
+  <View style={styles.settingsContainer}>
+    <Text style={[styles.settingsTitle, { color: theme.text }]}>Налаштування</Text>
+    <View style={styles.settingItem}>
+      <Text style={{ color: theme.text }}>Темна тема</Text>
+      <Switch value={isDarkMode} onValueChange={setIsDarkMode} />
+    </View>
+    <View style={{ marginTop: 20 }}>
+      <Text style={{ color: theme.text }}>Користувач: {user.username}</Text>
+      <Button title="Вийти" onPress={logout} />
+    </View>
+  </View>
+);
+
 export default function App() {
+  const [user, setUser] = useState(null);
   const [currentScreen, setCurrentScreen] = useState('list');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [data, setData] = useState(initialData);
@@ -80,6 +132,9 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState(null);
 
   const theme = isDarkMode ? darkTheme : lightTheme;
+
+  const login = (user) => setUser(user);
+  const logout = () => { setUser(null); setCurrentScreen('list'); };
 
   const openModal = (item) => {
     setSelectedItem(item);
@@ -96,50 +151,56 @@ export default function App() {
     setData(data.filter(item => item.id !== id));
   };
 
+  if (!user) {
+    return <LoginScreen onLogin={login} theme={theme} />;
+  }
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Навігація */}
-      <View style={[styles.nav, { backgroundColor: theme.nav }]}>
-        <TouchableOpacity
-          style={[styles.navButton, currentScreen === 'list' && { backgroundColor: theme.activeButton }]}
-          onPress={() => setCurrentScreen('list')}
-        >
-          <Text style={styles.navButtonText}>Події</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navButton, currentScreen === 'add' && { backgroundColor: theme.activeButton }]}
-          onPress={() => setCurrentScreen('add')}
-        >
-          <Text style={styles.navButtonText}>Додати</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navButton, currentScreen === 'settings' && { backgroundColor: theme.activeButton }]}
-          onPress={() => setCurrentScreen('settings')}
-        >
-          <Text style={styles.navButtonText}>Налаштування</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Контент */}
-      <View style={styles.content}>
-        {currentScreen === 'list' && (
-          <HistoryListScreen data={data} openModal={openModal} deleteItem={deleteItem} theme={theme} />
-        )}
-        {currentScreen === 'add' && <AddEventScreen addItem={addItem} theme={theme} />}
-        {currentScreen === 'settings' && <SettingsScreen isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} theme={theme} />}
-      </View>
-
-      {/* Модальне вікно */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalBackground}>
-          <View style={[styles.modalContainer, { backgroundColor: theme.card }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedItem?.title}</Text>
-            <Text style={[styles.modalDescription, { color: theme.subText }]}>{selectedItem?.description}</Text>
-            <Button title="Закрити" onPress={() => setModalVisible(false)} />
-          </View>
+    <AuthContext.Provider value={{ user, logout }}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        {/* Навігація */}
+        <View style={[styles.nav, { backgroundColor: theme.nav }]}>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'list' && { backgroundColor: theme.activeButton }]}
+            onPress={() => setCurrentScreen('list')}
+          >
+            <Text style={styles.navButtonText}>Події</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'add' && { backgroundColor: theme.activeButton }]}
+            onPress={() => setCurrentScreen('add')}
+          >
+            <Text style={styles.navButtonText}>Додати</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'settings' && { backgroundColor: theme.activeButton }]}
+            onPress={() => setCurrentScreen('settings')}
+          >
+            <Text style={styles.navButtonText}>Налаштування</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </SafeAreaView>
+
+        {/* Контент */}
+        <View style={styles.content}>
+          {currentScreen === 'list' && (
+            <HistoryListScreen data={data} openModal={openModal} deleteItem={deleteItem} theme={theme} />
+          )}
+          {currentScreen === 'add' && <AddEventScreen addItem={addItem} theme={theme} />}
+          {currentScreen === 'settings' && <SettingsScreen isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} theme={theme} logout={logout} user={user} />}
+        </View>
+
+        {/* Модальне вікно */}
+        <Modal visible={modalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalBackground}>
+            <View style={[styles.modalContainer, { backgroundColor: theme.card }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedItem?.title}</Text>
+              <Text style={[styles.modalDescription, { color: theme.subText }]}>{selectedItem?.description}</Text>
+              <Button title="Закрити" onPress={() => setModalVisible(false)} />
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </AuthContext.Provider>
   );
 }
 
@@ -193,4 +254,6 @@ const styles = StyleSheet.create({
   modalContainer: { margin: 20, padding: 20, borderRadius: 12, elevation: 5 },
   modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   modalDescription: { fontSize: 16, textAlign: 'center', marginBottom: 20 },
+  loginContainer: { padding: 20, justifyContent: 'center', flex: 1 },
+  loginTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
 });
