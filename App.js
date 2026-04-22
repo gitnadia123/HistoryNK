@@ -1,35 +1,33 @@
-import React, { useState, createContext } from 'react';
+import React, { useState, createContext, useEffect, useContext } from 'react';
 import {
   SafeAreaView, View, Text, FlatList, StyleSheet,
   TouchableOpacity, Switch, TextInput,
   Modal, Button, ScrollView
 } from 'react-native';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AuthContext = createContext();
+const AppContext = createContext();
 const queryClient = new QueryClient();
 
-/* ================= API ================= */
+// API
 const fetchPosts = async () => {
   const res = await fetch('https://jsonplaceholder.typicode.com/posts');
-  if (!res.ok) throw new Error('Помилка API');
-
   const data = await res.json();
 
   return data.map(item => ({
     ...item,
-    title: item.title + ' (переклад)',
-    body: item.body
+    title: item.title + ' (переклад)'
   }));
 };
 
-/* ================= USERS ================= */
+// Users
 const users = [
   { username: 'nadia', password: '1234' },
   { username: 'olena', password: 'abcd' },
 ];
 
-/* ================= DATA ================= */
+// Initial data
 const initialData = [
   { id: '1', title: 'Київська Русь', description: 'Середньовічна держава України' },
   { id: '2', title: 'Богдан Хмельницький', description: 'Гетьман України' },
@@ -37,16 +35,64 @@ const initialData = [
   { id: '4', title: 'Незалежність України', description: '1991 рік' },
 ];
 
-/* ================= LOGIN ================= */
-const LoginScreen = ({ onLogin, theme }) => {
+// Provider
+const AppProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [data, setData] = useState(initialData);
+  const [dark, setDark] = useState(false);
+  const [sessionOnly, setSessionOnly] = useState(false);
+
+  // load
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const savedData = await AsyncStorage.getItem('DATA');
+        const savedTheme = await AsyncStorage.getItem('THEME');
+
+        if (savedData) setData(JSON.parse(savedData));
+        if (savedTheme) setDark(JSON.parse(savedTheme));
+      } catch (e) {
+        console.log(e);
+      }
+    };
+    loadData();
+  }, []);
+
+  // save data
+  useEffect(() => {
+    if (!sessionOnly) {
+      AsyncStorage.setItem('DATA', JSON.stringify(data));
+    }
+  }, [data]);
+
+  // save theme
+  useEffect(() => {
+    if (!sessionOnly) {
+      AsyncStorage.setItem('THEME', JSON.stringify(dark));
+    }
+  }, [dark]);
+
+  return (
+    <AppContext.Provider value={{
+      user, setUser,
+      data, setData,
+      dark, setDark,
+      sessionOnly, setSessionOnly
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+// Login
+const LoginScreen = ({ theme }) => {
+  const { setUser } = useContext(AppContext);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
 
   const handleLogin = () => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) onLogin(user);
-    else setError('Невірний логін або пароль');
+    const u = users.find(x => x.username === username && x.password === password);
+    if (u) setUser(u);
   };
 
   return (
@@ -57,32 +103,34 @@ const LoginScreen = ({ onLogin, theme }) => {
         <TextInput placeholder="Логін" value={username} onChangeText={setUsername} style={styles.input} />
         <TextInput placeholder="Пароль" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
 
-        {!!error && <Text style={{ color: 'red' }}>{error}</Text>}
-
         <Button title="Увійти" onPress={handleLogin} />
       </View>
     </SafeAreaView>
   );
 };
 
-/* ================= СПИСОК ================= */
-const ListScreen = ({ data, openModal, deleteItem, theme }) => (
-  <FlatList
-    data={data}
-    keyExtractor={(i) => i.id}
-    renderItem={({ item }) => (
-      <TouchableOpacity onPress={() => openModal(item)}>
-        <View style={[styles.card, { backgroundColor: theme.card }]}>
-          <Text style={{ color: theme.text, fontWeight: 'bold' }}>{item.title}</Text>
-          <Text style={{ color: theme.subText }}>{item.description}</Text>
-          <Button title="Видалити" onPress={() => deleteItem(item.id)} />
-        </View>
-      </TouchableOpacity>
-    )}
-  />
-);
+// List
+const ListScreen = ({ openModal, deleteItem, theme }) => {
+  const { data } = useContext(AppContext);
 
-/* ================= ДОДАТИ ================= */
+  return (
+    <FlatList
+      data={data}
+      keyExtractor={(i) => i.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity onPress={() => openModal(item)}>
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <Text style={{ color: theme.text, fontWeight: 'bold' }}>{item.title}</Text>
+            <Text style={{ color: theme.subText }}>{item.description}</Text>
+            <Button title="Видалити" onPress={() => deleteItem(item.id)} />
+          </View>
+        </TouchableOpacity>
+      )}
+    />
+  );
+};
+
+// Add
 const AddScreen = ({ addItem }) => {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -97,18 +145,28 @@ const AddScreen = ({ addItem }) => {
   );
 };
 
-/* ================= НАЛАШТУВАННЯ ================= */
-const SettingsScreen = ({ dark, setDark, user }) => (
-  <View style={{ padding: 20 }}>
-    <Text>Користувач: {user.username}</Text>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Text>Темна тема</Text>
-      <Switch value={dark} onValueChange={setDark} />
-    </View>
-  </View>
-);
+// Settings
+const SettingsScreen = ({ theme }) => {
+  const { dark, setDark, sessionOnly, setSessionOnly, user } = useContext(AppContext);
 
-/* ================= API ================= */
+  return (
+    <View style={{ padding: 20 }}>
+      <Text>Користувач: {user?.username}</Text>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text>Темна тема</Text>
+        <Switch value={dark} onValueChange={setDark} />
+      </View>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+        <Text>Тільки для сесії</Text>
+        <Switch value={sessionOnly} onValueChange={setSessionOnly} />
+      </View>
+    </View>
+  );
+};
+
+// API
 const ApiScreen = ({ openDetails }) => {
   const { data = [], isLoading } = useQuery({
     queryKey: ['posts'],
@@ -131,7 +189,7 @@ const ApiScreen = ({ openDetails }) => {
   );
 };
 
-/* ================= ДЕТАЛІ ================= */
+// Details
 const DetailsScreen = ({ item, goBack }) => (
   <ScrollView style={{ padding: 20 }}>
     <Text style={{ fontSize: 20 }}>{item.title}</Text>
@@ -140,14 +198,13 @@ const DetailsScreen = ({ item, goBack }) => (
   </ScrollView>
 );
 
-/* ================= MAIN ================= */
-export default function App() {
-  const [user, setUser] = useState(null);
+// Main
+function MainApp() {
+  const { user, data, setData, dark } = useContext(AppContext);
+
   const [screen, setScreen] = useState('list');
-  const [data, setData] = useState(initialData);
   const [modal, setModal] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [dark, setDark] = useState(false);
 
   const theme = dark ? darkTheme : lightTheme;
 
@@ -166,42 +223,51 @@ export default function App() {
     setModal(true);
   };
 
-  if (!user) return <LoginScreen onLogin={setUser} theme={theme} />;
+  if (!user) return <LoginScreen theme={theme} />;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
 
-        <View style={[styles.nav, { backgroundColor: theme.nav }]}>
-          <TouchableOpacity onPress={() => setScreen('list')}><Text style={styles.navText}>Події</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('add')}><Text style={styles.navText}>Додати</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('api')}><Text style={styles.navText}>API</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('settings')}><Text style={styles.navText}>Налаштування</Text></TouchableOpacity>
-        </View>
+      <View style={[styles.nav, { backgroundColor: theme.nav }]}>
+        <TouchableOpacity onPress={() => setScreen('list')}><Text style={styles.navText}>Події</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreen('add')}><Text style={styles.navText}>Додати</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreen('api')}><Text style={styles.navText}>API</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreen('settings')}><Text style={styles.navText}>Налаштування</Text></TouchableOpacity>
+      </View>
 
-        {screen === 'list' && <ListScreen data={data} openModal={openModal} deleteItem={deleteItem} theme={theme} />}
-        {screen === 'add' && <AddScreen addItem={addItem} />}
-        {screen === 'settings' && <SettingsScreen dark={dark} setDark={setDark} user={user} />}
-        {screen === 'api' && <ApiScreen openDetails={(item) => { setSelected(item); setScreen('details'); }} />}
-        {screen === 'details' && <DetailsScreen item={selected} goBack={() => setScreen('api')} />}
+      {screen === 'list' && <ListScreen openModal={openModal} deleteItem={deleteItem} theme={theme} />}
+      {screen === 'add' && <AddScreen addItem={addItem} />}
+      {screen === 'settings' && <SettingsScreen theme={theme} />}
+      {screen === 'api' && <ApiScreen openDetails={(item) => { setSelected(item); setScreen('details'); }} />}
+      {screen === 'details' && <DetailsScreen item={selected} goBack={() => setScreen('api')} />}
 
-        <Modal visible={modal} transparent>
-          <View style={styles.modal}>
-            <View style={styles.modalBox}>
-              <Text>{selected?.title}</Text>
-              <Text>{selected?.description}</Text>
-              <Button title="Детальніше" onPress={() => { setModal(false); setScreen('details'); }} />
-              <Button title="Закрити" onPress={() => setModal(false)} />
-            </View>
+      <Modal visible={modal} transparent>
+        <View style={styles.modal}>
+          <View style={styles.modalBox}>
+            <Text>{selected?.title}</Text>
+            <Text>{selected?.description}</Text>
+            <Button title="Детальніше" onPress={() => { setModal(false); setScreen('details'); }} />
+            <Button title="Закрити" onPress={() => setModal(false)} />
           </View>
-        </Modal>
+        </View>
+      </Modal>
 
-      </SafeAreaView>
+    </SafeAreaView>
+  );
+}
+
+// Root
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <MainApp />
+      </AppProvider>
     </QueryClientProvider>
   );
 }
 
-/* ================= ТЕМА ================= */
+// Styles
 const lightTheme = {
   background: '#F3ECE7',
   nav: '#6D4C41',
@@ -218,7 +284,6 @@ const darkTheme = {
   subText: '#ccc',
 };
 
-/* ================= СТИЛІ ================= */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   nav: { flexDirection: 'row', justifyContent: 'space-around', padding: 10 },
