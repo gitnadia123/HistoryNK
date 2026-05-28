@@ -1,297 +1,632 @@
 import React, { useState, createContext, useEffect, useContext } from 'react';
 import {
-  SafeAreaView, View, Text, FlatList, StyleSheet,
-  TouchableOpacity, Switch, TextInput,
-  Modal, Button, ScrollView
+  SafeAreaView,
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  Button,
+  Switch,
+  Alert,
+  ScrollView,
+  Image
 } from 'react-native';
+
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import * as ImagePicker from 'expo-image-picker';
 
 const AppContext = createContext();
 const queryClient = new QueryClient();
 
-// API
-const fetchPosts = async () => {
-  const res = await fetch('https://jsonplaceholder.typicode.com/posts');
-  const data = await res.json();
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
-  return data.map(item => ({
-    ...item,
-    title: item.title + ' (переклад)'
-  }));
-};
-
-// Users
 const users = [
   { username: 'nadia', password: '1234' },
-  { username: 'olena', password: 'abcd' },
+  { username: 'olena', password: 'abcd' }
 ];
 
-// Initial data
 const initialData = [
   { id: '1', title: 'Київська Русь', description: 'Середньовічна держава України' },
   { id: '2', title: 'Богдан Хмельницький', description: 'Гетьман України' },
   { id: '3', title: 'Українська революція', description: '1917–1921 роки' },
-  { id: '4', title: 'Незалежність України', description: '1991 рік' },
+  { id: '4', title: 'Незалежність України', description: '1991 рік' }
 ];
 
-// Provider
-const AppProvider = ({ children }) => {
+const fetchPosts = async () => {
+  const res = await fetch('https://jsonplaceholder.typicode.com/posts');
+
+  if (!res.ok) {
+    throw new Error('Помилка API');
+  }
+
+  const data = await res.json();
+
+  return data.map(item => ({
+    ...item,
+    title: item.title + ' (переклад)',
+    body: item.body
+  }));
+};
+
+function AppProvider({ children }) {
   const [user, setUser] = useState(null);
   const [data, setData] = useState(initialData);
   const [dark, setDark] = useState(false);
   const [sessionOnly, setSessionOnly] = useState(false);
+  const [image, setImage] = useState(null);
 
-  // load
   useEffect(() => {
     const loadData = async () => {
       try {
         const savedData = await AsyncStorage.getItem('DATA');
         const savedTheme = await AsyncStorage.getItem('THEME');
+        const savedImage = await AsyncStorage.getItem('IMAGE');
 
         if (savedData) setData(JSON.parse(savedData));
         if (savedTheme) setDark(JSON.parse(savedTheme));
-      } catch (e) {
-        console.log(e);
+        if (savedImage) setImage(savedImage);
+      } catch (error) {
+        console.log(error);
       }
     };
+
     loadData();
   }, []);
 
-  // save data
   useEffect(() => {
     if (!sessionOnly) {
       AsyncStorage.setItem('DATA', JSON.stringify(data));
     }
-  }, [data]);
+  }, [data, sessionOnly]);
 
-  // save theme
   useEffect(() => {
     if (!sessionOnly) {
       AsyncStorage.setItem('THEME', JSON.stringify(dark));
     }
-  }, [dark]);
+  }, [dark, sessionOnly]);
+
+  useEffect(() => {
+    if (!sessionOnly) {
+      if (image) {
+        AsyncStorage.setItem('IMAGE', image);
+      } else {
+        AsyncStorage.removeItem('IMAGE');
+      }
+    }
+  }, [image, sessionOnly]);
 
   return (
-    <AppContext.Provider value={{
-      user, setUser,
-      data, setData,
-      dark, setDark,
-      sessionOnly, setSessionOnly
-    }}>
+    <AppContext.Provider
+      value={{
+        user,
+        setUser,
+        data,
+        setData,
+        dark,
+        setDark,
+        sessionOnly,
+        setSessionOnly,
+        image,
+        setImage
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
-};
+}
 
-// Login
-const LoginScreen = ({ theme }) => {
+function useTheme() {
+  const { dark } = useContext(AppContext);
+  return dark ? darkStyles : lightStyles;
+}
+
+function LoginScreen({ navigation }) {
   const { setUser } = useContext(AppContext);
+  const theme = useTheme();
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = () => {
-    const u = users.find(x => x.username === username && x.password === password);
-    if (u) setUser(u);
+    const found = users.find(
+      item => item.username === username && item.password === password
+    );
+
+    if (found) {
+      setUser(found);
+      navigation.replace('MainTabs');
+    } else {
+      Alert.alert('Помилка', 'Неправильний логін або пароль');
+    }
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.loginBox}>
-        <Text style={[styles.title, { color: theme.text }]}>Вхід</Text>
+    <SafeAreaView style={[styles.container, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>Вхід</Text>
 
-        <TextInput placeholder="Логін" value={username} onChangeText={setUsername} style={styles.input} />
-        <TextInput placeholder="Пароль" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+      <TextInput
+        placeholder="Логін"
+        placeholderTextColor="#888"
+        value={username}
+        onChangeText={setUsername}
+        style={[styles.input, theme.input]}
+      />
 
-        <Button title="Увійти" onPress={handleLogin} />
-      </View>
-    </SafeAreaView>
-  );
-};
+      <TextInput
+        placeholder="Пароль"
+        placeholderTextColor="#888"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+        style={[styles.input, theme.input]}
+      />
 
-// List
-const ListScreen = ({ openModal, deleteItem, theme }) => {
-  const { data } = useContext(AppContext);
-
-  return (
-    <FlatList
-      data={data}
-      keyExtractor={(i) => i.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity onPress={() => openModal(item)}>
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <Text style={{ color: theme.text, fontWeight: 'bold' }}>{item.title}</Text>
-            <Text style={{ color: theme.subText }}>{item.description}</Text>
-            <Button title="Видалити" onPress={() => deleteItem(item.id)} />
-          </View>
-        </TouchableOpacity>
-      )}
-    />
-  );
-};
-
-// Add
-const AddScreen = ({ addItem }) => {
-  const [title, setTitle] = useState('');
-  const [desc, setDesc] = useState('');
-
-  return (
-    <View style={{ padding: 20 }}>
-      <Text>Додати подію</Text>
-      <TextInput placeholder="Назва" value={title} onChangeText={setTitle} style={styles.input} />
-      <TextInput placeholder="Опис" value={desc} onChangeText={setDesc} style={styles.input} />
-      <Button title="Додати" onPress={() => addItem(title, desc)} />
-    </View>
-  );
-};
-
-// Settings
-const SettingsScreen = ({ theme }) => {
-  const { dark, setDark, sessionOnly, setSessionOnly, user } = useContext(AppContext);
-
-  return (
-    <View style={{ padding: 20 }}>
-      <Text>Користувач: {user?.username}</Text>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text>Темна тема</Text>
-        <Switch value={dark} onValueChange={setDark} />
-      </View>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-        <Text>Тільки для сесії</Text>
-        <Switch value={sessionOnly} onValueChange={setSessionOnly} />
-      </View>
-    </View>
-  );
-};
-
-// API
-const ApiScreen = ({ openDetails }) => {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ['posts'],
-    queryFn: fetchPosts
-  });
-
-  if (isLoading) return <Text>Завантаження...</Text>;
-
-  return (
-    <FlatList
-      data={data.slice(0, 10)}
-      keyExtractor={(i) => i.id.toString()}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text>{item.title}</Text>
-          <Button title="Детальніше" onPress={() => openDetails(item)} />
-        </View>
-      )}
-    />
-  );
-};
-
-// Details
-const DetailsScreen = ({ item, goBack }) => (
-  <ScrollView style={{ padding: 20 }}>
-    <Text style={{ fontSize: 20 }}>{item.title}</Text>
-    <Text>{item.body || item.description}</Text>
-    <Button title="Назад" onPress={goBack} />
-  </ScrollView>
-);
-
-// Main
-function MainApp() {
-  const { user, data, setData, dark } = useContext(AppContext);
-
-  const [screen, setScreen] = useState('list');
-  const [modal, setModal] = useState(false);
-  const [selected, setSelected] = useState(null);
-
-  const theme = dark ? darkTheme : lightTheme;
-
-  const addItem = (title, desc) => {
-    if (!title) return;
-    setData([{ id: Date.now().toString(), title, description: desc }, ...data]);
-    setScreen('list');
-  };
-
-  const deleteItem = (id) => {
-    setData(data.filter(i => i.id !== id));
-  };
-
-  const openModal = (item) => {
-    setSelected(item);
-    setModal(true);
-  };
-
-  if (!user) return <LoginScreen theme={theme} />;
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-
-      <View style={[styles.nav, { backgroundColor: theme.nav }]}>
-        <TouchableOpacity onPress={() => setScreen('list')}><Text style={styles.navText}>Події</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('add')}><Text style={styles.navText}>Додати</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('api')}><Text style={styles.navText}>API</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('settings')}><Text style={styles.navText}>Налаштування</Text></TouchableOpacity>
-      </View>
-
-      {screen === 'list' && <ListScreen openModal={openModal} deleteItem={deleteItem} theme={theme} />}
-      {screen === 'add' && <AddScreen addItem={addItem} />}
-      {screen === 'settings' && <SettingsScreen theme={theme} />}
-      {screen === 'api' && <ApiScreen openDetails={(item) => { setSelected(item); setScreen('details'); }} />}
-      {screen === 'details' && <DetailsScreen item={selected} goBack={() => setScreen('api')} />}
-
-      <Modal visible={modal} transparent>
-        <View style={styles.modal}>
-          <View style={styles.modalBox}>
-            <Text>{selected?.title}</Text>
-            <Text>{selected?.description}</Text>
-            <Button title="Детальніше" onPress={() => { setModal(false); setScreen('details'); }} />
-            <Button title="Закрити" onPress={() => setModal(false)} />
-          </View>
-        </View>
-      </Modal>
-
+      <Button title="Увійти" onPress={handleLogin} />
     </SafeAreaView>
   );
 }
 
-// Root
+function EventsScreen() {
+  const { data, setData } = useContext(AppContext);
+  const theme = useTheme();
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  const deleteItem = (id) => {
+    setData(data.filter(item => item.id !== id));
+  };
+
+  return (
+    <SafeAreaView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>Історичні події</Text>
+
+      <FlatList
+        data={data}
+        keyExtractor={item => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[styles.card, theme.card]}
+            onPress={() => {
+              setSelectedItem(item);
+              setModalVisible(true);
+            }}
+          >
+            <Text style={[styles.title, theme.text]}>{item.title}</Text>
+
+            <Text style={[styles.description, theme.text]}>
+              {item.description}
+            </Text>
+
+            <View style={styles.buttonBox}>
+              <Button
+                title="Видалити"
+                color="#8B0000"
+                onPress={() => deleteItem(item.id)}
+              />
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <View style={styles.modal}>
+          <View style={[styles.modalBox, theme.card]}>
+            <Text style={[styles.title, theme.text]}>
+              {selectedItem?.title}
+            </Text>
+
+            <Text style={[styles.description, theme.text]}>
+              {selectedItem?.description}
+            </Text>
+
+            <Button title="Закрити" onPress={() => setModalVisible(false)} />
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+function AddScreen() {
+  const { data, setData } = useContext(AppContext);
+  const theme = useTheme();
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+
+  const addEvent = () => {
+    if (!title.trim() || !description.trim()) {
+      Alert.alert('Помилка', 'Заповніть усі поля');
+      return;
+    }
+
+    const newEvent = {
+      id: Date.now().toString(),
+      title,
+      description
+    };
+
+    setData([newEvent, ...data]);
+    setTitle('');
+    setDescription('');
+
+    Alert.alert('Успішно', 'Подію додано');
+  };
+
+  return (
+    <SafeAreaView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>Додати подію</Text>
+
+      <TextInput
+        placeholder="Назва події"
+        placeholderTextColor="#888"
+        value={title}
+        onChangeText={setTitle}
+        style={[styles.input, theme.input]}
+      />
+
+      <TextInput
+        placeholder="Опис події"
+        placeholderTextColor="#888"
+        value={description}
+        onChangeText={setDescription}
+        style={[styles.input, theme.input]}
+      />
+
+      <Button title="Додати" onPress={addEvent} />
+    </SafeAreaView>
+  );
+}
+
+function ApiScreen({ navigation }) {
+  const theme = useTheme();
+
+  const { data = [], isLoading, isError } = useQuery({
+    queryKey: ['posts'],
+    queryFn: fetchPosts
+  });
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.screen, theme.container]}>
+        <Text style={[styles.mainTitle, theme.text]}>Завантаження...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={[styles.screen, theme.container]}>
+        <Text style={[styles.mainTitle, theme.text]}>Помилка API</Text>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>API ресурси</Text>
+
+      <FlatList
+        data={data.slice(0, 10)}
+        keyExtractor={item => item.id.toString()}
+        renderItem={({ item }) => (
+          <View style={[styles.card, theme.card]}>
+            <Text style={[styles.title, theme.text]}>{item.title}</Text>
+
+            <Button
+              title="Детальніше"
+              onPress={() => navigation.navigate('Details', { item })}
+            />
+          </View>
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+function ImageScreen() {
+  const { image, setImage } = useContext(AppContext);
+  const theme = useTheme();
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('Помилка', 'Потрібен дозвіл до галереї');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+  };
+
+  const removeImage = () => {
+    setImage(null);
+    Alert.alert('Готово', 'Зображення відкріплено');
+  };
+
+  return (
+    <SafeAreaView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>Фото</Text>
+
+      <View style={[styles.card, theme.card]}>
+        <Text style={[styles.title, theme.text]}>Нативна можливість</Text>
+
+        <Text style={[styles.description, theme.text]}>
+          Тут можна прикріпити зображення з галереї пристрою.
+        </Text>
+
+        {image ? (
+          <Image source={{ uri: image }} style={styles.image} />
+        ) : (
+          <View style={styles.emptyImage}>
+            <Text style={theme.text}>Зображення не прикріплено</Text>
+          </View>
+        )}
+
+        <Button title="Прикріпити зображення" onPress={pickImage} />
+
+        <View style={styles.buttonBox}>
+          <Button
+            title="Відкріпити зображення"
+            color="#8B0000"
+            onPress={removeImage}
+          />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function SettingsScreen({ navigation }) {
+  const {
+    user,
+    setUser,
+    dark,
+    setDark,
+    sessionOnly,
+    setSessionOnly
+  } = useContext(AppContext);
+
+  const theme = useTheme();
+
+  const logout = () => {
+    setUser(null);
+    navigation.getParent()?.replace('Login');
+  };
+
+  return (
+    <SafeAreaView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>Налаштування</Text>
+
+      <View style={[styles.card, theme.card]}>
+        <Text style={[styles.userText, theme.text]}>
+          Користувач: {user?.username}
+        </Text>
+
+        <View style={styles.row}>
+          <Text style={[styles.userText, theme.text]}>Темна тема</Text>
+          <Switch value={dark} onValueChange={setDark} />
+        </View>
+
+        <View style={styles.row}>
+          <Text style={[styles.userText, theme.text]}>Тільки для сесії</Text>
+          <Switch value={sessionOnly} onValueChange={setSessionOnly} />
+        </View>
+
+        <Button title="Вийти" onPress={logout} />
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function DetailsScreen({ route, navigation }) {
+  const theme = useTheme();
+  const { item } = route.params;
+
+  return (
+    <ScrollView style={[styles.screen, theme.container]}>
+      <Text style={[styles.mainTitle, theme.text]}>
+        {item.title}
+      </Text>
+
+      <View style={[styles.card, theme.card]}>
+        <Text style={[styles.description, theme.text]}>
+          {item.body || item.description}
+        </Text>
+
+        <Button title="Назад" onPress={() => navigation.goBack()} />
+      </View>
+    </ScrollView>
+  );
+}
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#6b3f25',
+        tabBarInactiveTintColor: '#777',
+        tabBarStyle: {
+          backgroundColor: '#f7efe7',
+          height: 65,
+          paddingBottom: 8,
+          paddingTop: 5
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: 'bold'
+        }
+      }}
+    >
+      <Tab.Screen name="Події" component={EventsScreen} />
+      <Tab.Screen name="Додати" component={AddScreen} />
+      <Tab.Screen name="API" component={ApiScreen} />
+      <Tab.Screen name="Фото" component={ImageScreen} />
+      <Tab.Screen name="Налаштування" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+}
+
+function RootNavigator() {
+  const { user } = useContext(AppContext);
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!user ? (
+          <Stack.Screen name="Login" component={LoginScreen} />
+        ) : (
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="Details" component={DetailsScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider>
-        <MainApp />
+        <RootNavigator />
       </AppProvider>
     </QueryClientProvider>
   );
 }
 
-// Styles
-const lightTheme = {
-  background: '#F3ECE7',
-  nav: '#6D4C41',
-  card: '#fff',
-  text: '#3E2F23',
-  subText: '#7A6657',
-};
-
-const darkTheme = {
-  background: '#2B211B',
-  nav: '#4E342E',
-  card: '#3A2B25',
-  text: '#fff',
-  subText: '#ccc',
-};
-
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  nav: { flexDirection: 'row', justifyContent: 'space-around', padding: 10 },
-  navText: { color: '#fff' },
-  card: { padding: 15, margin: 10, borderRadius: 10 },
-  input: { borderWidth: 1, padding: 10, margin: 5, borderRadius: 8 },
-  loginBox: { padding: 20, marginTop: 100 },
-  title: { fontSize: 20, textAlign: 'center' },
-  modal: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalBox: { margin: 20, padding: 20, backgroundColor: '#fff', borderRadius: 10 }
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20
+  },
+  screen: {
+    flex: 1,
+    padding: 20
+  },
+  mainTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    fontSize: 16
+  },
+  card: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 12
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  description: {
+    fontSize: 15,
+    marginTop: 5,
+    marginBottom: 8
+  },
+  userText: {
+    fontSize: 16,
+    marginBottom: 15
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 20
+  },
+  buttonBox: {
+    marginTop: 10
+  },
+  modal: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  },
+  modalBox: {
+    margin: 20,
+    padding: 20,
+    borderRadius: 15
+  },
+  image: {
+    width: '100%',
+    height: 230,
+    borderRadius: 12,
+    marginVertical: 15
+  },
+  emptyImage: {
+    width: '100%',
+    height: 180,
+    borderWidth: 1,
+    borderColor: '#c8a98c',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 15
+  }
+});
+
+const lightStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#f7efe7'
+  },
+  card: {
+    backgroundColor: '#fffaf5',
+    borderColor: '#c8a98c'
+  },
+  text: {
+    color: '#2b1a12'
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderColor: '#b88b68',
+    color: '#000'
+  }
+});
+
+const darkStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#1f140f'
+  },
+  card: {
+    backgroundColor: '#2d1d16',
+    borderColor: '#8b6a55'
+  },
+  text: {
+    color: '#fff'
+  },
+  input: {
+    backgroundColor: '#3a261d',
+    borderColor: '#8b6a55',
+    color: '#fff'
+  }
 });
